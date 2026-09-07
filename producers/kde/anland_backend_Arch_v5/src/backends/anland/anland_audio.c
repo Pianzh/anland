@@ -366,12 +366,14 @@ static int connect_stream(struct pw_stream *stream, enum spa_direction direction
     if (res < 0)
         return res;
 
-    /* Finalize the stream format immediately so the node allocates its ports even
-     * with no peer link. Otherwise the node stays "negotiated nowhere": WirePlumber's
-     * default-node picker only considers available-nodes that expose ports, and ports
-     * only appear after format negotiation -- a deadlock that leaves the anland sink
-     * permanently at 0/129 (and, without an audio driver, the whole graph asleep). */
-    pw_stream_finish_format(stream, 0, params[0]);
+    /* Push the Format param onto the stream immediately so the node allocates its
+     * ports even with no peer link. pw_stream_finish_format() was dropped from newer
+     * PipeWire headers; pw_stream_set_param(Format) is the supported equivalent.
+     * Otherwise the node stays "negotiated nowhere": WirePlumber's default-node
+     * picker only considers available-nodes that expose ports, and ports only appear
+     * after format negotiation -- a deadlock that leaves the anland sink permanently
+     * at 0/129 (and, without an audio driver, the whole graph asleep). */
+    pw_stream_set_param(stream, SPA_PARAM_Format, params[0]);
     return 0;
 }
 
