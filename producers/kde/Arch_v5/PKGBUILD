@@ -3,7 +3,7 @@
 
 pkgname=kwin
 pkgver=6.7.4
-pkgrel=1.2
+pkgrel=1.3
 pkgdesc='An easy to use, but flexible, Wayland compositor (anland backend)'
 arch=('aarch64')
 url='https://kde.org/plasma-desktop/'

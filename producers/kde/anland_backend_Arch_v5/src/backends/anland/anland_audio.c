@@ -361,7 +361,17 @@ static int connect_stream(struct pw_stream *stream, enum spa_direction direction
     const struct spa_pod *params[1] = { build_format(&bld, rate, channels) };
 
     int res = pw_stream_connect(stream, direction, PW_ID_ANY,
-                                PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
+                                PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS
+                                    |
+                                    /* Self-drive the sink: with PW_STREAM_FLAG_DRIVER the
+                                     * speaker node acts as the graph clock and instantiates
+                                     * its own ports even with no peer link. Without a driver
+                                     * role the pw_stream node stays "negotiated nowhere" and
+                                     * WirePlumber's default-node picker never sees available
+                                     * ports, so the sink can neither be picked as default nor
+                                     * accept a link -- the deadlock behind 0/129. Only the
+                                     * sink (input stream) drives; the mic stays a follower. */
+                                    ((direction == PW_DIRECTION_INPUT) ? PW_STREAM_FLAG_DRIVER : 0),
                                 params, 1);
     if (res < 0)
         return res;
