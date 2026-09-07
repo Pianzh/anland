@@ -427,7 +427,11 @@ static int build_pw(struct anland_audio *a)
             PW_KEY_NODE_NAME, "anland-speaker",
             PW_KEY_NODE_DESCRIPTION, "Anland remote speaker",
             PW_KEY_PRIORITY_SESSION, "1010",   /* outrank the auto-null dummy sink */
-            PW_KEY_PRIORITY_DRIVER, "1010",
+            /* 300000 beats Dummy-Driver's 200000 so the sink also wins the master
+             * clock (PW_STREAM_FLAG_DRIVER is set in connect_stream). The node then
+             * runs self-driven, exposing its ports without any peer link, which lets
+             * WirePlumber pick it as default sink and keeps the graph clock alive. */
+            PW_KEY_PRIORITY_DRIVER, "300000",
             NULL));
     if (!a->capture)
         return -1;
