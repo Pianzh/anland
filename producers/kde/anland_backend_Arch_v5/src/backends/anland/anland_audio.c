@@ -360,9 +360,19 @@ static int connect_stream(struct pw_stream *stream, enum spa_direction direction
     struct spa_pod_builder bld = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
     const struct spa_pod *params[1] = { build_format(&bld, rate, channels) };
 
-    return pw_stream_connect(stream, direction, PW_ID_ANY,
-                             PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
-                             params, 1);
+    int res = pw_stream_connect(stream, direction, PW_ID_ANY,
+                                PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
+                                params, 1);
+    if (res < 0)
+        return res;
+
+    /* Finalize the stream format immediately so the node allocates its ports even
+     * with no peer link. Otherwise the node stays "negotiated nowhere": WirePlumber's
+     * default-node picker only considers available-nodes that expose ports, and ports
+     * only appear after format negotiation -- a deadlock that leaves the anland sink
+     * permanently at 0/129 (and, without an audio driver, the whole graph asleep). */
+    pw_stream_finish_format(stream, 0, params[0]);
+    return 0;
 }
 
 /* Tear down the core proxy and both streams, leaving the loop, context, timer, mic
