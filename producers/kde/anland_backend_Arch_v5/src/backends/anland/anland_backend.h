@@ -21,8 +21,8 @@
 #include <sys/types.h>
 
 extern "C" {
-#include "display_producer.h"
-#include "protocol.h"
+#include "libdisplay_producer/display_producer.h"
+#include "libdisplay_producer/protocol.h"
 }
 
 class QSocketNotifier;
