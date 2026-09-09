@@ -15,6 +15,7 @@
 
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
+#include <spa/param/port-config.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/hook.h>
 
@@ -333,7 +334,7 @@ static const struct spa_pod *build_format(struct spa_pod_builder *bld,
     } else {
         info.position[0] = SPA_AUDIO_CHANNEL_MONO;
     }
-    return spa_format_audio_raw_build(bld, SPA_PARAM_EnumFormat, &info);
+    return spa_format_audio_raw_build(bld, SPA_PARAM_Format, &info);
 }
 
 /* node.latency = "quantum/rate" asks PipeWire to run this node at that buffer size.
@@ -351,18 +352,47 @@ static void set_latency(struct pw_stream *stream, uint32_t quantum, uint32_t rat
     pw_stream_update_properties(stream, &dict);
 }
 
+/* Declare a fixed number of ports at stream-connect time. A pw_stream node without
+ * SPA_PARAM_PortConfig exposes zero ports until a peer drives negotiation, which is a
+ * deadlock for this self-created sink/source: WirePlumber's default-node picker only
+ * ever considers nodes with available ports, so the speaker can never become the
+ * default sink nor accept a link. mode=convert materializes one port per format channel
+ * (FL/FR), in the stream's own format (s16le), immediately and without a peer link.
+ * NOTE: must be applied via pw_stream_set_param() after connect -- parameters passed
+ * in pw_stream_connect() other than Format/EnumFormat are ignored by the server. */
+static const struct spa_pod *build_portconfig(struct spa_pod_builder *bld,
+                                              enum spa_direction direction)
+{
+    return spa_pod_builder_add_object(bld,
+            SPA_TYPE_OBJECT_ParamPortConfig, SPA_PARAM_PortConfig,
+            SPA_PARAM_PORT_CONFIG_direction, SPA_POD_Id(direction),
+            SPA_PARAM_PORT_CONFIG_mode,      SPA_POD_Id(SPA_PARAM_PORT_CONFIG_MODE_convert),
+            SPA_PARAM_PORT_CONFIG_monitor,   SPA_POD_Bool(false),
+            SPA_PARAM_PORT_CONFIG_control,   SPA_POD_Bool(false));
+}
+
 static int connect_stream(struct pw_stream *stream, enum spa_direction direction,
                           uint32_t rate, uint32_t channels, uint32_t quantum)
 {
     set_latency(stream, quantum, rate);
 
+    /* Fixed SPA_PARAM_Format (not EnumFormat): the server stamps the format
+     * immediately, which is what lets the PortConfig ports get sized. */
     uint8_t buffer[1024];
     struct spa_pod_builder bld = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
     const struct spa_pod *params[1] = { build_format(&bld, rate, channels) };
 
-    return pw_stream_connect(stream, direction, PW_ID_ANY,
-                             PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
-                             params, 1);
+    int res = pw_stream_connect(stream, direction, PW_ID_ANY,
+                                PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
+                                params, 1);
+    if (res < 0)
+        return res;
+
+    uint8_t cfg[1024];
+    struct spa_pod_builder cb = SPA_POD_BUILDER_INIT(cfg, sizeof(cfg));
+    pw_stream_set_param(stream, SPA_PARAM_PortConfig, build_portconfig(&cb, direction));
+
+    return 0;
 }
 
 /* Tear down the core proxy and both streams, leaving the loop, context, timer, mic
